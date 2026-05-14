@@ -1,177 +1,184 @@
-# Drive2PDF
+# Web2PDF
 
-Drive2PDF is a production-focused Chrome Extension (Manifest V3) that turns rendered document-viewer pages into a downloadable PDF. It is designed for Google Drive PDF previews and similar lazy-loaded, virtualized viewers where the browser can see rendered pages but the original PDF file is not directly downloaded by the extension.
+Web2PDF is a production-ready Manifest V3 Chrome extension that converts rendered document viewer pages into a downloadable PDF. It is designed for web-based PDF previews and lazy-loaded document viewers where the browser can display each page but the extension does not directly download the original file.
 
-The extension captures the already-rendered page content from the browser tab, stores pages immediately before viewers recycle them, deduplicates captures, and generates a single PDF with bundled jsPDF.
+The extension captures pages that are already rendered in the active tab, stores them inside the extension process before virtualized viewers recycle the DOM, deduplicates captures, and generates a PDF locally with a bundled copy of jsPDF.
+
+Current production version: `1.0.0`.
 
 ## Features
 
-- Manifest V3 architecture with a service worker, content scripts, popup UI, shared utilities, and an offscreen PDF worker.
-- Google Drive PDF viewer support, including lazy-loaded and recycled page nodes.
-- Notesify and embedded Google Drive viewer support through host permissions.
-- Intelligent scroll-container detection for nested viewers and full-page viewers.
-- Smooth auto-scroll with adaptive waits for lazy rendering.
-- MutationObserver tracking so newly inserted pages are captured as soon as they appear.
-- Extraction priority:
-  1. canvas capture;
-  2. image source extraction;
-  3. blob URL conversion;
-  4. background image extraction;
-  5. visible DOM screenshot fallback.
-- Page detection using ARIA labels, data attributes, DOM geometry, page-like containers, image/canvas dimensions, and page counters.
-- Immediate offscreen storage so Google Drive cannot unload older pages before export.
-- Hash-based deduplication with page-number-aware replacement for better-quality recaptures.
-- PNG-first conversion for readable text and high-quality output.
-- jsPDF PDF generation with one rendered page per PDF page.
-- Auto-sized PDF pages or fitted A4/Letter output.
-- Progress updates during scan and PDF generation.
-- Configurable scroll speed, render wait, image quality, filename, page size, max pages, auto-download, and screenshot fallback.
-- Graceful cancellation.
-- Detailed console logging with the `[Drive2PDF]` prefix.
+- Manifest V3 service worker, popup, content pipeline, and offscreen PDF generation.
+- User-invoked capture with `activeTab`; Web2PDF does not run continuously across browsing sessions.
+- Google Drive and Google Docs preview support, including lazy-loaded and recycled page nodes.
+- Embedded viewer support for Google-hosted document frames.
+- Scroll-container detection for full-page and nested document viewers.
+- Lazy-load pre-scroll, adaptive waits, mutation tracking, and final-pass page checks.
+- Page capture from canvas, image elements, blob-backed images, background images, and visible screenshot fallback.
+- Page-number detection from ARIA labels, data attributes, visible text, DOM geometry, and page counters.
+- Hash-based deduplication with quality-aware replacement for better page captures.
+- Local PDF generation with automatic download or save prompt.
+- Configurable scroll speed, render wait, image quality, filename pattern, page size, page limit, and screenshot fallback.
+- Production logging controls that suppress normal debug output.
 
-## Folder Structure
+## Installation
+
+### Load Unpacked
+
+1. Open Chrome and go to `chrome://extensions`.
+2. Enable `Developer mode`.
+3. Click `Load unpacked`.
+4. Select the project root folder that contains `manifest.json`.
+5. Open a supported document viewer.
+6. Click the Web2PDF toolbar icon and choose `Capture PDF`.
+
+For local files, enable `Allow access to file URLs` for Web2PDF in `chrome://extensions`.
+
+### Chrome Web Store Package
+
+Run:
+
+```powershell
+npm run build
+```
+
+The package script creates:
+
+- `dist/load-unpacked/` for local Chrome testing.
+- `dist/web2pdf-1.0.0.zip` for Chrome Web Store upload.
+
+The ZIP is built from an allowlist containing only runtime extension files: `manifest.json`, `icons/`, `src/`, and `vendor/`.
+
+## Permissions
+
+Web2PDF uses the minimum permissions required for this workflow:
+
+| Permission | Why it is needed |
+| --- | --- |
+| `activeTab` | Allows capture only after the user clicks the extension on the current tab. |
+| `scripting` | Injects the content capture pipeline into the active tab. |
+| `storage` | Saves user settings with `chrome.storage.sync` under the `web2pdf.settings` key. |
+| `downloads` | Saves the generated PDF through Chrome's download manager. |
+| `offscreen` | Keeps captured page images and PDF generation alive after the popup closes. |
+
+Host permissions are scoped to Google document-rendering origins:
+
+- `https://drive.google.com/*`
+- `https://docs.google.com/*`
+- `https://*.googleusercontent.com/*`
+
+These host permissions let Web2PDF reach Google-hosted viewer frames when a document is embedded inside another site. Regular page access is still user initiated through `activeTab`.
+
+## Privacy Summary
+
+Web2PDF processes rendered pages locally in the browser. It does not collect browsing data, upload documents, use analytics, call remote servers, or track users. Captured images are held in extension memory only for the active capture session and are cleaned up after generation, cancellation, tab close, or download completion.
+
+See [PRIVACY_POLICY.md](PRIVACY_POLICY.md) for the full Chrome Web Store privacy policy text.
+
+## Architecture
 
 ```text
-Drive2PDF/
+Web2PDF/
 +-- manifest.json
-+-- README.md
-+-- assets/
++-- icons/
 |   +-- icon-16.png
 |   +-- icon-32.png
 |   +-- icon-48.png
 |   +-- icon-128.png
-+-- vendor/
-|   +-- README.md
-|   +-- jspdf.umd.min.js
 +-- src/
-    +-- background/
-    |   +-- service-worker.js
-    +-- content/
-    |   +-- content-script.js
-    |   +-- page-detector.js
-    |   +-- page-store.js
-    |   +-- scroll-engine.js
-    +-- offscreen/
-    |   +-- offscreen.html
-    |   +-- offscreen.js
-    |   +-- pdf-generator.js
-    +-- popup/
-    |   +-- popup.css
-    |   +-- popup.html
-    |   +-- popup.js
-    +-- shared/
-    |   +-- constants.js
-    |   +-- logger.js
-    |   +-- settings.js
-    +-- utils/
-        +-- dom.js
-        +-- hash.js
-        +-- image.js
+|   +-- background/
+|   |   +-- service-worker.js
+|   +-- content/
+|   |   +-- content-script.js
+|   |   +-- page-detector.js
+|   |   +-- page-store.js
+|   |   +-- scroll-engine.js
+|   +-- offscreen/
+|   |   +-- offscreen.html
+|   |   +-- offscreen.js
+|   |   +-- pdf-generator.js
+|   +-- popup/
+|   |   +-- popup.html
+|   |   +-- popup.css
+|   |   +-- popup.js
+|   +-- shared/
+|   |   +-- config.js
+|   |   +-- constants.js
+|   |   +-- logger.js
+|   |   +-- settings.js
+|   +-- utils/
+|       +-- dom.js
+|       +-- hash.js
+|       +-- image.js
++-- vendor/
+|   +-- jspdf.umd.min.js
++-- store-assets/
+|   +-- web2pdf-screenshot-1280x800.png
+|   +-- web2pdf-promo-small-440x280.png
++-- scripts/
+    +-- validate-extension.js
+    +-- package-extension.ps1
 ```
-
-## Installation
-
-1. Open Chrome.
-2. Go to `chrome://extensions`.
-3. Enable `Developer mode`.
-4. Click `Load unpacked`.
-5. Select this folder:
-
-   ```text
-   C:\Users\aryan\Documents\Programs\Drive2PDF
-   ```
-
-6. Open a supported document viewer, such as a Google Drive PDF preview.
-7. Click the Drive2PDF toolbar icon.
-8. Click `Start Extraction`.
-
-For local files, enable `Allow access to file URLs` for Drive2PDF in `chrome://extensions`.
 
 ## How It Works
 
-Drive2PDF does not request or download the source PDF. Instead, it works from the rendered document pages already present in the browser:
+1. The popup starts a capture session with the current settings.
+2. The service worker injects the content pipeline into the active tab and selects the best frame to capture.
+3. The content script detects the viewer scroll container and rendered page candidates.
+4. The scroll engine moves through the viewer while mutation tracking catches newly rendered pages.
+5. The detector captures each visible page with the best available method.
+6. Captured pages are sent to the offscreen document and stored in memory for the session.
+7. The offscreen generator sorts, deduplicates, and writes the PDF.
+8. The service worker downloads the generated PDF and cleans up session resources.
 
-1. The popup starts an extraction session and passes user settings to the service worker.
-2. The service worker injects the content pipeline into the active tab.
-3. The content script detects the best scroll container for the viewer.
-4. The scroll engine moves through the document slowly enough for lazy-loaded pages to render.
-5. A MutationObserver watches for newly inserted canvases, images, and page containers.
-6. The detector captures each visible page immediately, using the best available extraction method.
-7. Captured pages are streamed into the extension offscreen document and stored in memory.
-8. The offscreen PDF generator sorts, deduplicates, and writes pages into a jsPDF document.
-9. The service worker downloads the generated PDF.
+## Filename Tokens
 
-## Google Drive Handling
+The default filename is:
 
-Google Drive PDF previews are virtualized: as you scroll forward, older page nodes can be removed or reused for newer pages. Drive2PDF handles this by capturing pages the moment they render and storing the image data outside the page context.
+```text
+Web2PDF-{date}-{time}.pdf
+```
 
-The extension uses:
+Supported tokens:
 
-- `MutationObserver` events to react to newly mounted pages;
-- visible scans before and after each scroll step;
-- page-number extraction from labels and attributes when available;
-- image hashes to avoid duplicate captures;
-- quality scoring to replace a weak capture with a stronger capture of the same explicit page;
-- stalled-render and end-of-document safeguards to avoid infinite scroll loops.
-
-## Settings
-
-Settings are stored with `chrome.storage.sync`.
-
-| Setting | Description |
-| --- | --- |
-| Scroll speed | Pixels moved per scroll step. Lower values are safer for slow viewers. |
-| Render wait | Delay between scroll steps and scans. Increase for slow networks. |
-| Image quality | Compression preference passed to PDF generation. High values preserve readability. |
-| Output filename | Supports `{date}`, `{time}`, and `{title}` tokens. |
-| PDF page size | `Auto per page`, `A4 fit`, or `Letter fit`. |
-| Max pages | Hard stop to prevent runaway extraction. |
-| Download automatically | Starts download directly, or shows Chrome's save prompt when disabled. |
-| Screenshot fallback | Uses visible-tab screenshots if canvas/image extraction fails. |
-
-## Permissions
-
-Drive2PDF uses the smallest practical permission set for this workflow:
-
-- `activeTab`: operate only on the active page after the user clicks the extension.
-- `scripting`: inject the content pipeline into the active tab.
-- `storage`: persist popup settings.
-- `downloads`: save the generated PDF.
-- `offscreen`: keep captured pages and generate PDFs outside the popup lifecycle.
-
-Host permissions are limited to Google Drive/Docs, Google user content image hosts, and Notesify domains.
+- `{date}`: current date as `YYYY-MM-DD`.
+- `{time}`: current time as `HH-MM-SS`.
+- `{title}`: sanitized active tab title.
 
 ## Limitations
 
-- The browser must be able to render the pages. Drive2PDF cannot bypass access controls.
-- Screenshot fallback captures visible pixels only; keep the tab visible during difficult captures.
-- Extremely large documents can use significant memory because page images must be stored until PDF generation finishes.
-- Some viewers may intentionally taint canvases or restrict image fetches; screenshot fallback exists for those cases.
+- Web2PDF cannot bypass document access controls or site restrictions.
+- The browser must be able to render the pages before Web2PDF can capture them.
+- Some sites taint canvases or restrict image access; screenshot fallback can help when direct extraction fails.
+- Very large documents can use significant memory while page images are waiting for PDF generation.
+- Screenshot fallback captures visible pixels, so the tab should remain visible for difficult viewers.
 
-## Development Checks
+## Troubleshooting
 
-Run syntax checks:
+- `Chrome internal pages cannot be captured`: Chrome blocks extensions from operating on internal browser pages.
+- `No pages were captured`: Open the document preview, wait for pages to render, then try again with a slower scroll speed and longer render wait.
+- Missing or repeated pages: Increase render wait, lower scroll speed, and keep screenshot fallback enabled.
+- Blank pages: Make sure the viewer tab remains visible during capture and try a slower capture pass.
+- Download prompt does not appear: Confirm Chrome has not blocked downloads and that Web2PDF has the `downloads` permission.
+
+## Development
+
+Run release validation:
+
+```powershell
+npm run validate
+```
+
+Create the Chrome Web Store package:
+
+```powershell
+npm run package
+```
+
+Syntax-check all extension JavaScript:
 
 ```powershell
 Get-ChildItem -Path src -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }
 ```
 
-Validate the manifest:
-
-```powershell
-node -e "JSON.parse(require('fs').readFileSync('manifest.json','utf8')); console.log('manifest ok')"
-```
-
-Smoke-test bundled jsPDF:
-
-```powershell
-node -e "const { jsPDF } = require('./vendor/jspdf.umd.min.js'); const doc = new jsPDF(); doc.text('Drive2PDF check', 10, 10); console.log(doc.output('arraybuffer').byteLength > 0 ? 'jspdf ok' : 'jspdf empty')"
-```
-
-## Vendored Dependency
-
-`vendor/jspdf.umd.min.js` is jsPDF 2.5.2 from the official npm package. It is bundled locally because Manifest V3 extensions cannot rely on remote code.
-
-## License
-
-No project license has been added yet. Add one before publishing publicly if you want others to reuse or redistribute the extension.
+`vendor/jspdf.umd.min.js` is jsPDF 2.5.2 from the official npm package and is bundled locally because Manifest V3 extensions cannot load remote code.
