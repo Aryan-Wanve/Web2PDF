@@ -1,13 +1,16 @@
-(function initDrive2PDFSettings(global) {
+(function initWeb2PDFSettings(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
+  const root = global.Web2PDF || {};
+  const config = root.Config || {};
+  const defaultFilename = config.defaultFilename || "Web2PDF-{date}-{time}.pdf";
+  const fallbackFilename = config.fallbackFilename || "Web2PDF.pdf";
 
   const DEFAULT_SETTINGS = Object.freeze({
     scrollSpeed: 850,
     renderWaitMs: 900,
     imageQuality: 0.96,
-    outputFilename: "Drive2PDF-{date}-{time}.pdf",
+    outputFilename: defaultFilename,
     pageSize: "auto",
     maxPages: 300,
     autoDownload: true,
@@ -53,12 +56,13 @@
   }
 
   function sanitizeFilename(name) {
-    return String(name || "Drive2PDF.pdf")
+    return String(name || fallbackFilename)
+      .replace(/[\x00-\x1f\x7f]+/g, "")
       .replace(/[\\/:*?"<>|]+/g, "-")
       .replace(/\s+/g, " ")
       .trim()
       .replace(/^\.+/, "")
-      .slice(0, 180) || "Drive2PDF.pdf";
+      .slice(0, 180) || fallbackFilename;
   }
 
   function formatFilename(pattern, tabTitle) {
@@ -79,5 +83,5 @@
   root.formatFilename = formatFilename;
   root.sanitizeFilename = sanitizeFilename;
 
-  global.Drive2PDF = root;
+  global.Web2PDF = root;
 })(globalThis);

@@ -1,7 +1,7 @@
-(function initDrive2PDFDom(global) {
+(function initWeb2PDFDom(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
+  const root = global.Web2PDF || {};
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -301,5 +301,5 @@
     cssUrlToPlainUrl
   };
 
-  global.Drive2PDF = root;
+  global.Web2PDF = root;
 })(globalThis);

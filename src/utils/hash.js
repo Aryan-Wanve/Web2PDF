@@ -1,7 +1,7 @@
-(function initDrive2PDFHash(global) {
+(function initWeb2PDFHash(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
+  const root = global.Web2PDF || {};
 
   function fnv1a(input) {
     let hash = 0x811c9dc5;
@@ -46,5 +46,5 @@
     sampleLargeString
   };
 
-  global.Drive2PDF = root;
+  global.Web2PDF = root;
 })(globalThis);

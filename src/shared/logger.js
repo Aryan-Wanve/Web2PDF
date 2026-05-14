@@ -1,33 +1,54 @@
-(function initDrive2PDFLogger(global) {
+(function initWeb2PDFLogger(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
-  const prefix = root.LOG_PREFIX || "[Drive2PDF]";
+  const root = global.Web2PDF || {};
+  const config = root.Config || {};
+  const prefix = root.LOG_PREFIX || "[Web2PDF]";
+  const LEVELS = Object.freeze({
+    silent: 0,
+    error: 1,
+    warn: 2,
+    info: 3,
+    debug: 4
+  });
+  const configuredLevel = String(config.logLevel || (config.production ? "warn" : "debug")).toLowerCase();
+  const activeLevel = LEVELS[configuredLevel] == null ? LEVELS.warn : LEVELS[configuredLevel];
 
   function format(scope, args) {
     const label = scope ? `${prefix} ${scope}` : prefix;
     return [label].concat(Array.prototype.slice.call(args));
   }
 
+  function shouldWrite(levelName) {
+    return activeLevel >= LEVELS[levelName];
+  }
+
+  function write(method, levelName, scope, args) {
+    if (!shouldWrite(levelName) || !global.console || typeof global.console[method] !== "function") {
+      return;
+    }
+    global.console[method].apply(global.console, format(scope, args));
+  }
+
   root.createLogger = function createLogger(scope) {
     return {
       log: function log() {
-        console.log.apply(console, format(scope, arguments));
+        write("log", "info", scope, arguments);
       },
       info: function info() {
-        console.info.apply(console, format(scope, arguments));
+        write("info", "info", scope, arguments);
       },
       warn: function warn() {
-        console.warn.apply(console, format(scope, arguments));
+        write("warn", "warn", scope, arguments);
       },
       error: function error() {
-        console.error.apply(console, format(scope, arguments));
+        write("error", "error", scope, arguments);
       },
       debug: function debug() {
-        console.debug.apply(console, format(scope, arguments));
+        write("debug", "debug", scope, arguments);
       }
     };
   };
 
-  global.Drive2PDF = root;
+  global.Web2PDF = root;
 })(globalThis);

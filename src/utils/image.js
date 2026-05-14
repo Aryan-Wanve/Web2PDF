@@ -1,7 +1,7 @@
-(function initDrive2PDFImage(global) {
+(function initWeb2PDFImage(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
+  const root = global.Web2PDF || {};
   const logger = root.createLogger ? root.createLogger("Image") : console;
   const Methods = root.CaptureMethods || {};
 
@@ -195,11 +195,12 @@
     };
   }
 
-  function requestViewportCapture(rect) {
+  function requestViewportCapture(rect, sessionId) {
     const Messages = root.Messages || {};
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({
         type: Messages.CAPTURE_VISIBLE,
+        sessionId,
         rect: {
           top: rect.top,
           left: rect.left,
@@ -259,12 +260,12 @@
     };
   }
 
-  async function captureElementScreenshot(element) {
+  async function captureElementScreenshot(element, sessionId) {
     const rect = element.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) {
       throw new Error("Element is too small for screenshot fallback");
     }
-    const dataUrl = await requestViewportCapture(rect);
+    const dataUrl = await requestViewportCapture(rect, sessionId);
     return cropViewportScreenshot(dataUrl, rect);
   }
 
@@ -324,5 +325,5 @@
     ensurePdfCompatibleDataUrl
   };
 
-  global.Drive2PDF = root;
+  global.Web2PDF = root;
 })(globalThis);

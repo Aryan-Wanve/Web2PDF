@@ -1,7 +1,7 @@
-(function initDrive2PDFPageStore(global) {
+(function initWeb2PDFPageStore(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
+  const root = global.Web2PDF || {};
   const logger = root.createLogger("Store");
   const Messages = root.Messages;
 
@@ -126,5 +126,5 @@
   }
 
   root.PageStore = PageStore;
-  global.Drive2PDF = root;
+  global.Web2PDF = root;
 })(globalThis);

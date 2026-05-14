@@ -1,7 +1,7 @@
-(function initDrive2PDFPageDetector(global) {
+(function initWeb2PDFPageDetector(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
+  const root = global.Web2PDF || {};
   const logger = root.createLogger("Detector");
   const Dom = root.Dom;
   const Image = root.Image;
@@ -261,7 +261,7 @@
 
       if (!captured && this.settings.includeScreenshotFallback) {
         try {
-          captured = await Image.captureElementScreenshot(candidate.fallbackElement);
+          captured = await Image.captureElementScreenshot(candidate.fallbackElement, this.store.sessionId);
         } catch (error) {
           throw captureError || error;
         }
@@ -286,5 +286,5 @@
   }
 
   root.PageDetector = PageDetector;
-  global.Drive2PDF = root;
+  global.Web2PDF = root;
 })(globalThis);

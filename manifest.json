@@ -1,8 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Drive2PDF",
+  "name": "Web2PDF",
+  "short_name": "Web2PDF",
   "version": "1.0.0",
-  "description": "Capture rendered lazy-loaded document viewers and export the visible pages as a PDF.",
+  "version_name": "1.0.0",
+  "author": "Aryan Wanve",
+  "description": "Convert rendered document viewer pages into a PDF locally in your browser.",
+  "homepage_url": "https://github.com/Aryan-Wanve/Web2PDF",
+  "minimum_chrome_version": "109",
   "permissions": [
     "activeTab",
     "downloads",
@@ -13,27 +18,28 @@
   "host_permissions": [
     "https://drive.google.com/*",
     "https://docs.google.com/*",
-    "https://*.googleusercontent.com/*",
-    "https://notesify.com/*",
-    "https://*.notesify.com/*"
+    "https://*.googleusercontent.com/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js"
   },
   "icons": {
-    "16": "assets/icon-16.png",
-    "32": "assets/icon-32.png",
-    "48": "assets/icon-48.png",
-    "128": "assets/icon-128.png"
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Drive2PDF",
+    "default_title": "Web2PDF - Save rendered pages as PDF",
     "default_popup": "src/popup/popup.html",
     "default_icon": {
-      "16": "assets/icon-16.png",
-      "32": "assets/icon-32.png",
-      "48": "assets/icon-48.png",
-      "128": "assets/icon-128.png"
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
     }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
   }
 }

@@ -1,7 +1,7 @@
-(function initDrive2PDFScrollEngine(global) {
+(function initWeb2PDFScrollEngine(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
+  const root = global.Web2PDF || {};
   const logger = root.createLogger("Scroll");
   const Dom = root.Dom;
 
@@ -37,6 +37,8 @@
         Dom.setScrollTop(this.scrollContainer, 0, false);
         await Dom.sleep(Math.min(1200, this.settings.renderWaitMs + 250));
       }
+
+      await this.fastPreloadPass(startedAt);
 
       let lastMetrics = Dom.getScrollMetrics(this.scrollContainer);
       let stallRetries = 0;
@@ -94,7 +96,7 @@
 
         endRetries = 0;
         const nextTop = Math.min(metrics.maxTop, metrics.top + this.settings.scrollSpeed);
-        Dom.setScrollTop(this.scrollContainer, nextTop, true);
+        Dom.setScrollTop(this.scrollContainer, nextTop, false);
         await Dom.sleep(Math.max(250, Math.min(1300, this.settings.renderWaitMs)));
         await Dom.nextFrame();
         const afterScrollNew = await this.detector.scanVisible("after-scroll");
@@ -126,6 +128,74 @@
         totalPages: this.totalPages,
         durationMs: Date.now() - startedAt
       };
+    }
+
+    async fastPreloadPass(startedAt) {
+      let metrics = Dom.getScrollMetrics(this.scrollContainer);
+      if (metrics.maxTop < Math.max(800, metrics.clientHeight * 0.8)) {
+        return;
+      }
+
+      const waitMs = Math.max(120, Math.min(520, Math.round(this.settings.renderWaitMs * 0.35)));
+      this.emit("Fast-loading lazy pages", {
+        pagesCaptured: this.store.count,
+        scrollPercent: metrics.maxTop ? Math.round((metrics.top / metrics.maxTop) * 100) : 0
+      });
+      await this.detector.scanVisible("fast-preload-start");
+
+      let lastTop = metrics.top;
+      let stallCount = 0;
+      while (!this.signal.aborted && this.store.count < this.settings.maxPages) {
+        if (Date.now() - startedAt > this.settings.maxRuntimeMs) {
+          throw new Error("Extraction timed out before the document finished loading");
+        }
+
+        this.refreshTotalPages();
+        if (this.totalPages && this.store.count >= Math.min(this.totalPages, this.settings.maxPages)) {
+          break;
+        }
+
+        metrics = Dom.getScrollMetrics(this.scrollContainer);
+        if (metrics.atEnd) {
+          break;
+        }
+
+        const step = Math.max(
+          this.settings.scrollSpeed * 2,
+          Math.round(metrics.clientHeight * 0.9),
+          1200
+        );
+        const nextTop = Math.min(metrics.maxTop, metrics.top + step);
+        Dom.setScrollTop(this.scrollContainer, nextTop, false);
+        await Dom.sleep(waitMs);
+        await Dom.nextFrame();
+        await this.detector.scanVisible("fast-preload");
+
+        const nextMetrics = Dom.getScrollMetrics(this.scrollContainer);
+        this.emit("Fast-loading lazy pages", {
+          pagesCaptured: this.store.count,
+          totalPages: this.totalPages,
+          scrollPercent: nextMetrics.maxTop ? Math.round((nextMetrics.top / nextMetrics.maxTop) * 100) : 100
+        });
+
+        if (Math.abs(nextMetrics.top - lastTop) < 4) {
+          stallCount += 1;
+          if (stallCount >= 2) {
+            break;
+          }
+        } else {
+          stallCount = 0;
+        }
+        lastTop = nextMetrics.top;
+      }
+
+      if (this.settings.scrollToTop && !this.signal.aborted) {
+        this.emit("Returning to beginning for final pass", { pagesCaptured: this.store.count });
+        Dom.setScrollTop(this.scrollContainer, 0, false);
+        await Dom.sleep(Math.max(180, Math.min(900, this.settings.renderWaitMs)));
+        await Dom.nextFrame();
+        await this.detector.scanVisible("fast-preload-reset");
+      }
     }
 
     observeMutations() {
@@ -204,5 +274,5 @@
   }
 
   root.ScrollEngine = ScrollEngine;
-  global.Drive2PDF = root;
+  global.Web2PDF = root;
 })(globalThis);

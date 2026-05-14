@@ -1,7 +1,7 @@
-(function initDrive2PDFPdfGenerator(global) {
+(function initWeb2PDFPdfGenerator(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
+  const root = global.Web2PDF || {};
   const logger = root.createLogger("Generator");
   const Status = root.Status;
 
@@ -148,5 +148,5 @@
     generate
   };
 
-  global.Drive2PDF = root;
+  global.Web2PDF = root;
 })(globalThis);

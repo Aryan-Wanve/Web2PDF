@@ -1,7 +1,7 @@
-(function initDrive2PDFOffscreen(global) {
+(function initWeb2PDFOffscreen(global) {
   "use strict";
 
-  const root = global.Drive2PDF || {};
+  const root = global.Web2PDF || {};
   const logger = root.createLogger("PDF");
   const Messages = root.Messages;
   const sessions = new Map();

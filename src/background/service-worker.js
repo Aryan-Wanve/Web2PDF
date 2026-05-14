@@ -1,18 +1,20 @@
 importScripts(
+  "../shared/config.js",
   "../shared/constants.js",
   "../shared/logger.js",
   "../shared/settings.js"
 );
 
-(function initDrive2PDFBackground(global) {
+(function initWeb2PDFBackground(global) {
   "use strict";
 
-  const root = global.Drive2PDF;
+  const root = global.Web2PDF;
   const logger = root.createLogger("Background");
   const Messages = root.Messages;
   const Status = root.Status;
 
   const CONTENT_FILES = [
+    "src/shared/config.js",
     "src/shared/constants.js",
     "src/shared/logger.js",
     "src/shared/settings.js",
@@ -44,16 +46,21 @@ importScripts(
     });
   }
 
-  function tabsSendMessage(tabId, message) {
+  function tabsSendMessage(tabId, message, options) {
     return new Promise((resolve, reject) => {
-      chrome.tabs.sendMessage(tabId, message, (response) => {
+      const callback = (response) => {
         const error = chrome.runtime.lastError;
         if (error) {
           reject(new Error(error.message));
           return;
         }
         resolve(response || {});
-      });
+      };
+      if (options) {
+        chrome.tabs.sendMessage(tabId, message, options, callback);
+      } else {
+        chrome.tabs.sendMessage(tabId, message, callback);
+      }
     });
   }
 
@@ -72,9 +79,44 @@ importScripts(
 
   function executeContentScripts(tabId) {
     return chrome.scripting.executeScript({
-      target: { tabId },
+      target: { tabId, allFrames: true },
       files: CONTENT_FILES
     });
+  }
+
+  async function selectExtractionFrame(tabId, injectionResults) {
+    const frameIds = new Set([0]);
+    for (const result of injectionResults || []) {
+      if (Number.isFinite(result.frameId)) {
+        frameIds.add(result.frameId);
+      }
+    }
+
+    const probes = await Promise.allSettled(Array.from(frameIds).map(async (frameId) => {
+      const response = await tabsSendMessage(tabId, {
+        type: Messages.CONTENT_PROBE
+      }, { frameId });
+      return Object.assign({ frameId }, response || {});
+    }));
+
+    const usable = probes
+      .filter((result) => result.status === "fulfilled" && result.value && result.value.ok)
+      .map((result) => result.value)
+      .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    if (!usable.length) {
+      logger.warn("No content frame probes responded; falling back to top frame");
+      return { frameId: 0, score: 0, reasons: ["fallback"] };
+    }
+
+    const selected = usable[0];
+    logger.log("Selected extraction frame", {
+      frameId: selected.frameId,
+      score: selected.score,
+      reasons: selected.reasons,
+      url: selected.url
+    });
+    return selected;
   }
 
   async function ensureOffscreenDocument() {
@@ -102,7 +144,7 @@ importScripts(
       creatingOffscreen = chrome.offscreen.createDocument({
         url: OFFSCREEN_URL,
         reasons: ["BLOBS"],
-        justification: "Drive2PDF stores captured page images and generates a downloadable PDF blob."
+        justification: "Web2PDF stores captured page images and generates a downloadable PDF blob."
       });
       await creatingOffscreen;
     } catch (error) {
@@ -118,7 +160,13 @@ importScripts(
     const message = Object.assign({
       type: Messages.STATUS_BROADCAST
     }, payload || {});
-    chrome.runtime.sendMessage(message).catch(() => {});
+    try {
+      chrome.runtime.sendMessage(message, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch (error) {
+      logger.debug("Status broadcast skipped", error);
+    }
   }
 
   function getPublicSession(session) {
@@ -163,12 +211,27 @@ importScripts(
     return session;
   }
 
+  function getContentMessageSession(message, sender) {
+    const sessionId = message && message.sessionId;
+    const session = sessionId ? sessions.get(sessionId) : activeSessionId ? sessions.get(activeSessionId) : null;
+    if (!session) {
+      throw new Error("Unknown extraction session");
+    }
+    if (!sender || !sender.tab || sender.tab.id !== session.tabId) {
+      throw new Error("Message sender does not match the capture tab");
+    }
+    if (Number.isFinite(session.frameId) && Number.isFinite(sender.frameId) && sender.frameId !== session.frameId) {
+      throw new Error("Message sender does not match the selected capture frame");
+    }
+    return session;
+  }
+
   async function startExtraction(request) {
     const tab = request.tabId ? await chrome.tabs.get(request.tabId) : await queryActiveTab();
     if (!tab || !tab.id) {
       throw new Error("No active tab found");
     }
-    if (/^chrome:|^edge:|^about:/i.test(tab.url || "")) {
+    if (/^(chrome|chrome-extension|edge|about|devtools):/i.test(tab.url || "")) {
       throw new Error("Chrome internal pages cannot be captured");
     }
 
@@ -198,12 +261,15 @@ importScripts(
     });
 
     logger.log("Injecting content scripts", tab.url);
-    await executeContentScripts(tab.id);
+    const injectedFrames = await executeContentScripts(tab.id);
+    const targetFrame = await selectExtractionFrame(tab.id, injectedFrames);
+    session.frameId = targetFrame.frameId;
+    session.frameUrl = targetFrame.url || tab.url || "";
     await tabsSendMessage(tab.id, {
       type: Messages.CONTENT_START,
       sessionId,
       settings
-    });
+    }, { frameId: targetFrame.frameId });
 
     updateSession(sessionId, {
       statusType: Status.SCANNING,
@@ -224,7 +290,7 @@ importScripts(
       await tabsSendMessage(session.tabId, {
         type: Messages.CONTENT_CANCEL,
         sessionId: id
-      });
+      }, Number.isFinite(session.frameId) ? { frameId: session.frameId } : undefined);
     } catch (error) {
       logger.warn("Content cancel message failed", error);
     }
@@ -259,16 +325,16 @@ importScripts(
     }
   }
 
-  async function storeCapturedPage(message) {
-    const session = sessions.get(message.sessionId);
-    if (!session) {
-      throw new Error("Unknown extraction session");
-    }
+  async function storeCapturedPage(message, sender) {
+    const session = getContentMessageSession(message, sender);
+    const page = Object.assign({}, message.page || {}, {
+      sessionId: message.sessionId
+    });
     await ensureOffscreenDocument();
     const result = await runtimeSendMessage({
       type: Messages.OFFSCREEN_STORE_PAGE,
       sessionId: message.sessionId,
-      page: message.page
+      page
     });
     if (!result.ok) {
       throw new Error(result.error || "Offscreen page storage failed");
@@ -276,26 +342,31 @@ importScripts(
 
     updateSession(message.sessionId, {
       statusType: Status.SCANNING,
-      status: `Captured page ${message.page.pageNumber}`,
+      status: `Captured page ${page.pageNumber}`,
       pagesCaptured: result.count || session.pagesCaptured
     });
     return result;
   }
 
-  function captureVisibleTab(sender) {
+  function captureVisibleTab(message, sender) {
     return new Promise((resolve, reject) => {
-      if (!sender || !sender.tab || !sender.tab.windowId) {
-        reject(new Error("Visible capture requires an active tab sender"));
-        return;
-      }
-      chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          reject(new Error(error.message));
+      try {
+        const session = getContentMessageSession(message, sender);
+        if (!sender.tab.windowId || sender.tab.id !== session.tabId) {
+          reject(new Error("Visible capture requires the active capture tab"));
           return;
         }
-        resolve({ ok: true, dataUrl });
-      });
+        chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
+          const error = chrome.runtime.lastError;
+          if (error) {
+            reject(new Error(error.message));
+            return;
+          }
+          resolve({ ok: true, dataUrl });
+        });
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
@@ -388,14 +459,14 @@ importScripts(
     }
 
     if (message.type === Messages.CAPTURE_VISIBLE) {
-      captureVisibleTab(sender)
+      captureVisibleTab(message, sender)
         .then(sendResponse)
         .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
       return true;
     }
 
     if (message.type === Messages.PAGE_CAPTURED) {
-      storeCapturedPage(message)
+      storeCapturedPage(message, sender)
         .then((result) => sendResponse(Object.assign({ ok: true }, result)))
         .catch((error) => {
           logger.error("Failed to store captured page", error);
@@ -405,14 +476,19 @@ importScripts(
     }
 
     if (message.type === Messages.CONTENT_PROGRESS) {
-      updateSession(message.sessionId, {
-        statusType: Status.SCANNING,
-        status: message.status || "Scanning",
-        pagesCaptured: Number.isFinite(message.pagesCaptured) ? message.pagesCaptured : undefined,
-        totalPages: message.totalPages || sessions.get(message.sessionId)?.totalPages || null,
-        scrollPercent: message.scrollPercent
-      });
-      sendResponse({ ok: true });
+      try {
+        getContentMessageSession(message, sender);
+        updateSession(message.sessionId, {
+          statusType: Status.SCANNING,
+          status: message.status || "Scanning",
+          pagesCaptured: Number.isFinite(message.pagesCaptured) ? message.pagesCaptured : undefined,
+          totalPages: message.totalPages || sessions.get(message.sessionId)?.totalPages || null,
+          scrollPercent: message.scrollPercent
+        });
+        sendResponse({ ok: true });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message || String(error) });
+      }
       return true;
     }
 
@@ -429,40 +505,60 @@ importScripts(
     }
 
     if (message.type === Messages.EXTRACTION_DONE) {
-      updateSession(message.sessionId, {
-        statusType: Status.GENERATING,
-        status: "Document captured, building PDF",
-        pagesCaptured: message.summary && message.summary.pagesCaptured,
-        totalPages: message.summary && message.summary.totalPages
-      });
-      generateAndDownload(message.sessionId).catch((error) => {
-        logger.error("Generate/download failed", error);
+      try {
+        getContentMessageSession(message, sender);
+        updateSession(message.sessionId, {
+          statusType: Status.GENERATING,
+          status: "Document captured, building PDF",
+          pagesCaptured: message.summary && message.summary.pagesCaptured,
+          totalPages: message.summary && message.summary.totalPages
+        });
+        generateAndDownload(message.sessionId).catch((error) => {
+          logger.error("Generate/download failed", error);
+          updateSession(message.sessionId, {
+            statusType: Status.ERROR,
+            status: "PDF generation failed",
+            error: error.message || String(error)
+          });
+        });
+        sendResponse({ ok: true });
+      } catch (error) {
         updateSession(message.sessionId, {
           statusType: Status.ERROR,
-          status: "PDF generation failed",
+          status: "Extraction failed",
           error: error.message || String(error)
         });
-      });
-      sendResponse({ ok: true });
+        sendResponse({ ok: false, error: error.message || String(error) });
+      }
       return true;
     }
 
     if (message.type === Messages.EXTRACTION_CANCELLED) {
-      updateSession(message.sessionId, {
-        statusType: Status.CANCELLED,
-        status: "Cancelled"
-      });
-      sendResponse({ ok: true });
+      try {
+        getContentMessageSession(message, sender);
+        updateSession(message.sessionId, {
+          statusType: Status.CANCELLED,
+          status: "Cancelled"
+        });
+        sendResponse({ ok: true });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message || String(error) });
+      }
       return true;
     }
 
     if (message.type === Messages.EXTRACTION_ERROR) {
-      updateSession(message.sessionId, {
-        statusType: Status.ERROR,
-        status: "Extraction failed",
-        error: message.error || "Unknown error"
-      });
-      sendResponse({ ok: true });
+      try {
+        getContentMessageSession(message, sender);
+        updateSession(message.sessionId, {
+          statusType: Status.ERROR,
+          status: "Extraction failed",
+          error: message.error || "Unknown error"
+        });
+        sendResponse({ ok: true });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message || String(error) });
+      }
       return true;
     }
 
