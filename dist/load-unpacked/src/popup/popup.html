@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Web2PDF</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup" aria-labelledby="appTitle">
+      <header class="header">
+        <img class="mark" src="../../icons/icon-48.png" width="48" height="48" alt="" aria-hidden="true">
+        <div class="title-block">
+          <p class="eyebrow">Local PDF capture</p>
+          <h1 id="appTitle">Web2PDF</h1>
+        </div>
+        <span id="versionBadge" class="version-badge">1.0.0</span>
+      </header>
+
+      <section id="messageBox" class="message neutral" role="status" aria-live="polite" tabindex="-1">
+        Ready
+      </section>
+
+      <section class="actions" aria-label="Capture controls">
+        <button id="startButton" class="primary" type="button" aria-label="Start Web2PDF capture">
+          Capture PDF
+        </button>
+        <button id="cancelButton" class="secondary" type="button" disabled>
+          Cancel
+        </button>
+      </section>
+
+      <section id="progressCard" class="progress-card" aria-labelledby="progressTitle">
+        <div class="progress-meta">
+          <span id="progressTitle">Progress</span>
+          <span id="pageCounter">0 pages</span>
+        </div>
+        <p id="statusText" class="status-text">Idle</p>
+        <div class="progress-track" role="progressbar" aria-label="Capture progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="progressFill"></div>
+        </div>
+      </section>
+
+      <button id="settingsToggle" class="settings-toggle" type="button" aria-expanded="false" aria-controls="settingsPanel">
+        <span>Settings</span>
+        <span class="chevron" aria-hidden="true"></span>
+      </button>
+
+      <section id="settingsPanel" class="settings-panel" aria-label="Capture settings" hidden>
+        <label class="field">
+          <span>Scroll speed <output id="scrollSpeedValue" for="scrollSpeed"></output></span>
+          <input id="scrollSpeed" type="range" min="150" max="2500" step="50" aria-label="Scroll speed">
+        </label>
+
+        <label class="field">
+          <span>Render wait</span>
+          <input id="renderWaitMs" type="number" min="150" max="5000" step="50" inputmode="numeric" aria-label="Render wait in milliseconds">
+        </label>
+
+        <label class="field">
+          <span>Image quality <output id="imageQualityValue" for="imageQuality"></output></span>
+          <input id="imageQuality" type="range" min="0.5" max="1" step="0.01" aria-label="Image quality">
+        </label>
+
+        <label class="field">
+          <span>Output filename</span>
+          <input id="outputFilename" type="text" autocomplete="off" spellcheck="false" aria-label="Output filename">
+        </label>
+
+        <label class="field">
+          <span>PDF page size</span>
+          <select id="pageSize" aria-label="PDF page size">
+            <option value="auto">Auto per page</option>
+            <option value="a4">A4 fit</option>
+            <option value="letter">Letter fit</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Max pages</span>
+          <input id="maxPages" type="number" min="1" max="1000" step="1" inputmode="numeric" aria-label="Maximum pages">
+        </label>
+
+        <label class="switch-row">
+          <span>Auto download</span>
+          <input id="autoDownload" type="checkbox">
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+
+        <label class="switch-row">
+          <span>Screenshot fallback</span>
+          <input id="includeScreenshotFallback" type="checkbox">
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+      </section>
+
+      <section class="log-wrap" aria-label="Status log">
+        <div id="statusLog" class="status-log" role="log" aria-live="polite"></div>
+      </section>
+
+      <footer class="footer">Local-only processing</footer>
+    </main>
+
+    <script src="../shared/config.js"></script>
+    <script src="../shared/constants.js"></script>
+    <script src="../shared/logger.js"></script>
+    <script src="../shared/settings.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
